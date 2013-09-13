@@ -5,6 +5,9 @@
 #include <d3d9.h>
 #include <d3dx9.h>
 
+//Oculus Rift
+#include "OVR.h"
+
 //////
 // Constants
 // define the screen resolution
@@ -12,10 +15,20 @@ const int SCREEN_WIDTH = 1280;
 const int SCREEN_HEIGHT = 800;
 
 // global declarations
+// DirectX
 LPDIRECT3D9 d3d;                        // the pointer to our Direct3D interface
 LPDIRECT3DDEVICE9 d3dDevice;            // the pointer to the device class
 LPDIRECT3DVERTEXBUFFER9 vBuffer = NULL; // the pointer to the vertex buffer
 LPDIRECT3DINDEXBUFFER9 iBuffer = NULL;  // the pointer to the index buffer
+
+//Oculus Rift
+OVR::Ptr<OVR::DeviceManager>	pManager;
+OVR::Ptr<OVR::HMDDevice>		pHMD;
+OVR::Ptr<OVR::SensorDevice>		pSensor;
+OVR::SensorFusion				FusionResult;
+OVR::HMDInfo					Info;
+bool							InfoLoaded;
+
 
 float triX = 0.0f; //East
 float triY = 0.0f; //Up
@@ -30,6 +43,10 @@ void initLight(void);    // sets up the light and the material
 void renderFrame(void);  // renders a single frame
 void cleanD3D(void);     // closes Direct3D and releases memory
 
+void initRift(void);     //Inits the rift
+void cleanRift(void);    //Closes anything rift-related
+OVR::Matrix4f getRiftOri(void);//Returns the orientation of the rift
+
 // the WindowProc function prototype
 LRESULT CALLBACK WindowProc(HWND hWnd,
                          UINT message,
@@ -43,6 +60,49 @@ struct CUSTOMVERTEX
     FLOAT x, y, z;    // from the D3DFVF_XYZ flag
     D3DVECTOR NORMAL; // from the D3DFVF_NORMAL flag
 };
+
+//Initializes the rift
+void initRift(void)
+{
+	OVR::System::Init();
+	pManager = *OVR::DeviceManager::Create();
+	pHMD = *pManager->EnumerateDevices<OVR::HMDDevice>().CreateDevice();
+
+	if (pHMD)
+    {
+        InfoLoaded = pHMD->GetDeviceInfo(&Info);
+		pSensor = *pHMD->GetSensor();
+	}
+	else
+	{
+	   pSensor = *pManager->EnumerateDevices<OVR::SensorDevice>().CreateDevice();
+	}
+
+	if (pSensor)
+	{
+	   FusionResult.AttachToSensor(pSensor);
+	}
+}
+
+//Clear up everything rift-related
+void cleanRift(void)
+{
+	if (pSensor)
+	{
+		pSensor.Clear();
+		pHMD.Clear();
+	}
+
+	OVR::System::Destroy();
+}
+
+//Returns the current Orientation of the Rift
+OVR::Matrix4f getRiftOri(void)
+{
+	OVR::Quatf quaternion = FusionResult.GetOrientation();
+    OVR::Matrix4f hmdMat(quaternion);
+    return hmdMat;
+}
 
 // this function initializes and prepares Direct3D for use
 void initD3D(HWND hWnd)
@@ -194,19 +254,29 @@ void renderFrame(void)
         d3dDevice->SetFVF(CUSTOMFVF);
 
         //increase the values for Rotation and Translation of our object
-        rotation += 0.05f;
+        //rotation += 0.05f;
         //triX += 0.1f;
         //triY += 0.1f;
         //triZ += 0.1f;
 
         // SET UP THE PIPELINE
         // set the view transform
-        D3DXMATRIX matView;    // the view transform matrix
-        D3DXMatrixLookAtLH(&matView,
-                           &D3DXVECTOR3 (2.0f, 5.0f, 15.0f),   // the camera position
-                           &D3DXVECTOR3 (0.0f, 0.0f, 0.0f),    // the look-at position
-                           &D3DXVECTOR3 (0.0f, 1.0f, 0.0f));    // the up direction
-        d3dDevice->SetTransform(D3DTS_VIEW, &matView);    // set the view transform to matView
+        D3DXMATRIX camPos;
+        D3DXMatrixTranslation(&camPos, 0.0f, 5.0f, 15.0f);
+
+        //get the orientation from the rift
+        OVR::Matrix4f m = getRiftOri();
+        D3DXMATRIX camOri( m.M[0][0], m.M[0][1], m.M[0][2], m.M[0][3],
+                            m.M[1][0], m.M[1][1], m.M[1][2], m.M[1][3],
+                            m.M[2][0], m.M[2][1], m.M[2][2], m.M[2][3],
+                            m.M[3][0], m.M[3][1], m.M[3][2], m.M[3][3]);
+
+        //somehow the rift orientation is upside down... the easiest is to just apply a roll of 180°
+        //I think this is caused by the rift having a slightly other coordinate system orientation then DirectX...
+        D3DXMATRIX camOriFix;
+        D3DXMatrixRotationZ(&camOriFix, D3DXToRadian(180.0f));
+
+        d3dDevice->SetTransform(D3DTS_VIEW, &(camPos * camOri * camOriFix));    // set the view transform to matView
 
         // set the projection transform
         D3DXMATRIX matProjection;    // the projection transform matrix
@@ -286,8 +356,9 @@ int WINAPI WinMain(HINSTANCE hInstance,
     // display the window on the screen
     ShowWindow(hWnd, nCmdShow);
 
-    // set up and initialize Direct3D
+    // set up and initialize Direct3D + Rift
     initD3D(hWnd);
+    initRift();
 
     ////////////
     // enter the main loop:
@@ -313,8 +384,9 @@ int WINAPI WinMain(HINSTANCE hInstance,
         renderFrame();
     }
     
-    // clean up DirectX and COM
+    // clean up DirectX, COM and Rift
     cleanD3D();
+    cleanRift();
 
     // return this part of the WM_QUIT message to Windows
     return msg.wParam;
