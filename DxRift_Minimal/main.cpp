@@ -26,8 +26,6 @@ OVR::Ptr<OVR::DeviceManager>	pManager;
 OVR::Ptr<OVR::HMDDevice>		pHMD;
 OVR::Ptr<OVR::SensorDevice>		pSensor;
 OVR::SensorFusion				FusionResult;
-OVR::HMDInfo					Info;
-bool							InfoLoaded;
 
 
 float triX = 0.0f; //East
@@ -54,11 +52,11 @@ LRESULT CALLBACK WindowProc(HWND hWnd,
                          LPARAM lParam);
 
 //This is our Vertex struct
-#define CUSTOMFVF (D3DFVF_XYZ | D3DFVF_NORMAL)
+#define CUSTOMFVF (D3DFVF_XYZ | D3DFVF_DIFFUSE)
 struct CUSTOMVERTEX
 {
-    FLOAT x, y, z;    // from the D3DFVF_XYZ flag
-    D3DVECTOR NORMAL; // from the D3DFVF_NORMAL flag
+    FLOAT x, y, z;  // from the D3DFVF_XYZ flag
+    DWORD COLOR;    // from the D3DFVF_DIFFUSE flag
 };
 
 //Initializes the rift
@@ -70,7 +68,6 @@ void initRift(void)
 
 	if (pHMD)
     {
-        InfoLoaded = pHMD->GetDeviceInfo(&Info);
 		pSensor = *pHMD->GetSensor();
 	}
 	else
@@ -99,7 +96,7 @@ void cleanRift(void)
 //Returns the current Orientation of the Rift
 OVR::Matrix4f getRiftOri(void)
 {
-	OVR::Quatf quaternion = FusionResult.GetOrientation();
+    OVR::Quatf quaternion = FusionResult.GetPredictedOrientation();
     OVR::Matrix4f hmdMat(quaternion);
     return hmdMat;
 }
@@ -130,12 +127,10 @@ void initD3D(HWND hWnd)
                       &d3dDevice);
     
     initGraphics();    // call the function to initialize the triangle
-    initLight();       // call the function to initialize the light and material
 
     d3dDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);    //disable culling, this will display both sides of a triangle
-    d3dDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);    // both sides of the triangles
     d3dDevice->SetRenderState(D3DRS_ZENABLE, TRUE);             // turn on the z-buffer
-    d3dDevice->SetRenderState(D3DRS_AMBIENT, D3DCOLOR_XRGB(100, 50, 50));    // ambient light
+    d3dDevice->SetRenderState(D3DRS_LIGHTING, FALSE);           // turn off the 3D lighting
 }
 
 void initGraphics(void)
@@ -143,39 +138,18 @@ void initGraphics(void)
     // create the vertices using the CUSTOMVERTEX struct
     CUSTOMVERTEX vertices[] =
     {
-        { -3.0f, -3.0f, 3.0f, 0.0f, 0.0f, 1.0f, },    // side 1
-        { 3.0f, -3.0f, 3.0f, 0.0f, 0.0f, 1.0f, },
-        { -3.0f, 3.0f, 3.0f, 0.0f, 0.0f, 1.0f, },
-        { 3.0f, 3.0f, 3.0f, 0.0f, 0.0f, 1.0f, },
-
-        { -3.0f, -3.0f, -3.0f, 0.0f, 0.0f, -1.0f, },    // side 2
-        { -3.0f, 3.0f, -3.0f, 0.0f, 0.0f, -1.0f, },
-        { 3.0f, -3.0f, -3.0f, 0.0f, 0.0f, -1.0f, },
-        { 3.0f, 3.0f, -3.0f, 0.0f, 0.0f, -1.0f, },
-
-        { -3.0f, 3.0f, -3.0f, 0.0f, 1.0f, 0.0f, },    // side 3
-        { -3.0f, 3.0f, 3.0f, 0.0f, 1.0f, 0.0f, },
-        { 3.0f, 3.0f, -3.0f, 0.0f, 1.0f, 0.0f, },
-        { 3.0f, 3.0f, 3.0f, 0.0f, 1.0f, 0.0f, },
-
-        { -3.0f, -3.0f, -3.0f, 0.0f, -1.0f, 0.0f, },    // side 4
-        { 3.0f, -3.0f, -3.0f, 0.0f, -1.0f, 0.0f, },
-        { -3.0f, -3.0f, 3.0f, 0.0f, -1.0f, 0.0f, },
-        { 3.0f, -3.0f, 3.0f, 0.0f, -1.0f, 0.0f, },
-
-        { 3.0f, -3.0f, -3.0f, 1.0f, 0.0f, 0.0f, },    // side 5
-        { 3.0f, 3.0f, -3.0f, 1.0f, 0.0f, 0.0f, },
-        { 3.0f, -3.0f, 3.0f, 1.0f, 0.0f, 0.0f, },
-        { 3.0f, 3.0f, 3.0f, 1.0f, 0.0f, 0.0f, },
-
-        { -3.0f, -3.0f, -3.0f, -1.0f, 0.0f, 0.0f, },    // side 6
-        { -3.0f, -3.0f, 3.0f, -1.0f, 0.0f, 0.0f, },
-        { -3.0f, 3.0f, -3.0f, -1.0f, 0.0f, 0.0f, },
-        { -3.0f, 3.0f, 3.0f, -1.0f, 0.0f, 0.0f, },
+        { -3.0f, 3.0f, -3.0f, D3DCOLOR_XRGB(0, 0, 255), },    // vertex 0
+        { 3.0f, 3.0f, -3.0f, D3DCOLOR_XRGB(0, 255, 0), },     // vertex 1
+        { -3.0f, -3.0f, -3.0f, D3DCOLOR_XRGB(255, 0, 0), },   // 2
+        { 3.0f, -3.0f, -3.0f, D3DCOLOR_XRGB(0, 255, 255), },  // 3
+        { -3.0f, 3.0f, 3.0f, D3DCOLOR_XRGB(0, 0, 255), },     // ...
+        { 3.0f, 3.0f, 3.0f, D3DCOLOR_XRGB(255, 0, 0), },
+        { -3.0f, -3.0f, 3.0f, D3DCOLOR_XRGB(0, 255, 0), },
+        { 3.0f, -3.0f, 3.0f, D3DCOLOR_XRGB(0, 255, 255), },
     };
 
     // create a vertex buffer interface called v_buffer
-    d3dDevice->CreateVertexBuffer(24*sizeof(CUSTOMVERTEX),
+    d3dDevice->CreateVertexBuffer(8*sizeof(CUSTOMVERTEX),
                                0,
                                CUSTOMFVF,
                                D3DPOOL_MANAGED,
@@ -194,16 +168,16 @@ void initGraphics(void)
     {
         0, 1, 2,    // side 1
         2, 1, 3,
-        4, 5, 6,    // side 2
-        6, 5, 7,
-        8, 9, 10,    // side 3
-        10, 9, 11,
-        12, 13, 14,    // side 4
-        14, 13, 15,
-        16, 17, 18,    // side 5
-        18, 17, 19,
-        20, 21, 22,    // side 6
-        22, 21, 23,
+        4, 0, 6,    // side 2
+        6, 0, 2,
+        7, 5, 6,    // side 3
+        6, 5, 4,
+        3, 1, 7,    // side 4
+        7, 1, 5,
+        4, 5, 0,    // side 5
+        0, 5, 1,
+        3, 7, 2,    // side 6
+        2, 7, 6,
     };
 
     // create an index buffer interface called i_buffer
@@ -220,26 +194,6 @@ void initGraphics(void)
     iBuffer->Unlock();
 }
 
-// this is the function that sets up the lights and materials
-void initLight(void)
-{
-    D3DLIGHT9 light;    // create the light struct
-    ZeroMemory(&light, sizeof(light));    // clear out the light struct for use
-    light.Type = D3DLIGHT_DIRECTIONAL;    // make the light type 'directional light'
-    light.Diffuse = D3DXCOLOR(0.5f, 0.5f, 0.5f, 1.0f);    // set the light's color
-    light.Direction = D3DXVECTOR3(-1.0f, -0.3f, -1.0f);
-
-    d3dDevice->SetLight(0, &light);    // send the light struct properties to light #0
-    d3dDevice->LightEnable(0, TRUE);    // turn on light #0
-    
-    D3DMATERIAL9 material;    // create the material struct
-    ZeroMemory(&material, sizeof(D3DMATERIAL9));    // clear out the struct for use
-    material.Diffuse = D3DXCOLOR(1.0f, 1.0f, 1.0f, 1.0f);    // set diffuse color to white
-    material.Ambient = D3DXCOLOR(1.0f, 1.0f, 1.0f, 1.0f);    // set ambient color to white
-
-    d3dDevice->SetMaterial(&material);    // set the globably-used material to &material
-}
-
 // this is the function used to render a single frame
 void renderFrame(void)
 {
@@ -254,7 +208,7 @@ void renderFrame(void)
         d3dDevice->SetFVF(CUSTOMFVF);
 
         //increase the values for Rotation and Translation of our object
-        //rotation += 0.05f;
+        rotation += 0.02f;
         //triX += 0.1f;
         //triY += 0.1f;
         //triZ += 0.1f;
@@ -297,7 +251,7 @@ void renderFrame(void)
 
         // draw the cube
         d3dDevice->SetTransform(D3DTS_WORLD, &(matRotateY));
-        d3dDevice->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0, 24, 0, 12);
+        d3dDevice->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0, 8, 0, 12);
     }
 
     d3dDevice->EndScene();    // ends the 3D scene
