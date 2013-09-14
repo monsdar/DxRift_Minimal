@@ -88,6 +88,7 @@ void cleanRift(void)
 	{
 		pSensor.Clear();
 		pHMD.Clear();
+        pManager.Clear();
 	}
 
 	OVR::System::Destroy();

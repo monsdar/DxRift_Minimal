@@ -42,6 +42,10 @@
     <IncludePath>D:\Microsoft DirectX SDK %28June 2010%29\Include;D:\OculusSDK\LibOVR\Include;$(IncludePath)</IncludePath>
     <LibraryPath>D:\Microsoft DirectX SDK %28June 2010%29\Lib\x86;D:\OculusSDK\LibOVR\Lib\Win32;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <IncludePath>D:\Microsoft DirectX SDK %28June 2010%29\Include;D:\OculusSDK\LibOVR\Include;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\Microsoft DirectX SDK %28June 2010%29\Lib\x86;D:\OculusSDK\LibOVR\Lib\Win32;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -63,6 +67,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>d3d9.lib;d3dx9.lib;libovr.lib;Winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
