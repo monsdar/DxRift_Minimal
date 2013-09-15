@@ -1,5 +1,9 @@
 // include the basic windows header file
 #include <windows.h>
+#include <comdef.h> //provides a HRESULT toString
+
+//STL includes
+#include <fstream> //needed for the logfile
 
 //D3D includes
 #include <d3d9.h>
@@ -15,11 +19,19 @@ const int SCREEN_WIDTH = 1280;
 const int SCREEN_HEIGHT = 800;
 
 // global declarations
+//Log file where we'll write debug-logs to
+std::fstream logFile;
+
 // DirectX
 LPDIRECT3D9 d3d;                        // the pointer to our Direct3D interface
 LPDIRECT3DDEVICE9 d3dDevice;            // the pointer to the device class
 LPDIRECT3DVERTEXBUFFER9 vBuffer = NULL; // the pointer to the vertex buffer
 LPDIRECT3DINDEXBUFFER9 iBuffer = NULL;  // the pointer to the index buffer
+LPDIRECT3DVERTEXDECLARATION9 vertexDecl = NULL; //VertexDeclaration, needed for VertexShader
+LPDIRECT3DVERTEXSHADER9 vertexShader = NULL; //The VertexShader
+LPDIRECT3DPIXELSHADER9 pixelShader = NULL; //The PixelShader
+LPD3DXCONSTANTTABLE constantTable = NULL; //Used to communicate with the Shaders
+LPD3DXBUFFER code = NULL; //Buffer which holds the Shader-Code
 
 //Oculus Rift
 OVR::Ptr<OVR::DeviceManager>	pManager;
@@ -37,6 +49,7 @@ float fov = 45.0;
 // function prototypes
 void initD3D(HWND hWnd); // sets up and initializes Direct3D
 void initGraphics(void); // inits the graphics which we want to show during rendering
+void initShaders(void);  // inits the shaders
 void initLight(void);    // sets up the light and the material
 void renderFrame(void);  // renders a single frame
 void cleanD3D(void);     // closes Direct3D and releases memory
@@ -126,14 +139,81 @@ void initD3D(HWND hWnd)
                       D3DCREATE_SOFTWARE_VERTEXPROCESSING,
                       &d3dpp,
                       &d3dDevice);
-    
-    initGraphics();    // call the function to initialize the triangle
 
     d3dDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);    //disable culling, this will display both sides of a triangle
     d3dDevice->SetRenderState(D3DRS_ZENABLE, TRUE);             // turn on the z-buffer
     d3dDevice->SetRenderState(D3DRS_LIGHTING, FALSE);           // turn off the 3D lighting
+    
+    initGraphics();    // call the function to initialize the triangle
+    initShaders(); // this inits the Pixel- and VertexShader
 }
 
+void initShaders(void)
+{
+    //set up vertex shader declaration
+    //this is needed for the GPU to pass correct data to the VertexShader
+
+    //TODO: This is not the right decl for our type of vertices
+    D3DVERTEXELEMENT9 decl[] = {{0,
+                                 0,
+                                 D3DDECLTYPE_FLOAT3,
+                                 D3DDECLMETHOD_DEFAULT,
+                                 D3DDECLUSAGE_POSITION,
+                                 0},
+                                {0,
+                                 12,
+                                 D3DDECLTYPE_FLOAT2,
+                                 D3DDECLMETHOD_DEFAULT,
+                                 D3DDECLUSAGE_TEXCOORD,
+                                 0},
+                                D3DDECL_END()};
+    d3dDevice->CreateVertexDeclaration(decl, &vertexDecl);
+
+    //Load the actual VertexShader
+    HRESULT result = D3DXCompileShaderFromFile("vertex.vsh",    //filepath
+                                               NULL,            //macro's
+                                               NULL,            //includes
+                                               "vs_main",       //main function
+                                               "vs_1_1",        //shader profile
+                                               0,               //flags
+                                               &code,           //compiled operations
+                                               NULL,            //errors
+                                               &constantTable); //constants
+    
+    if(result == S_OK)
+    {
+        logFile << "VertexShader loaded successfully" << std::endl;
+        d3dDevice->CreateVertexShader(  (DWORD*)code->GetBufferPointer(), &vertexShader);
+        code->Release();
+    }
+    else
+    {
+        _com_error err(result);
+        logFile << "Could not load the VertexShader: " << err.ErrorMessage() << std::endl;
+    }
+    
+    //Load the actual PixelShader
+    result = D3DXCompileShaderFromFile("pixel.psh",   //filepath
+                                       NULL,          //macro's            
+                                       NULL,          //includes           
+                                       "ps_main",     //main function      
+                                       "ps_1_1",      //shader profile     
+                                       0,             //flags              
+                                       &code,         //compiled operations
+                                       NULL,          //errors
+                                       NULL);         //constants
+    if(result == S_OK)
+    {
+        logFile << "PixelShader loaded successfully" << std::endl;
+        d3dDevice->CreatePixelShader((DWORD*)code->GetBufferPointer(), &pixelShader);
+        code->Release();
+    }
+    else
+    {
+        _com_error err(result);
+        logFile << "Could not load the PixelShader: " << err.ErrorMessage() << std::endl;
+    }
+}
 void initGraphics(void)
 {
     // create the vertices using the CUSTOMVERTEX struct
@@ -199,28 +279,25 @@ void initGraphics(void)
 void renderFrame(void)
 {
     // clear the window and Z-Buffer
-    d3dDevice->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
-    d3dDevice->Clear(0, NULL, D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
+    d3dDevice->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 200), 1.0f, 0);
+    d3dDevice->Clear(0, NULL, D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(0, 0, 200), 1.0f, 0);
     d3dDevice->BeginScene();    // begins the 3D scene
 
     // do 3D rendering on the back buffer here
     {
-        // select which vertex format we are using
-        d3dDevice->SetFVF(CUSTOMFVF);
-
         //increase the values for Rotation and Translation of our object
         rotation += 0.02f;
         //triX += 0.1f;
         //triY += 0.1f;
         //triZ += 0.1f;
 
+        
         // SET UP THE PIPELINE
         // set the view transform
         D3DXMATRIX camPos;
         D3DXMatrixTranslation(&camPos, 0.0f, 5.0f, 15.0f);
 
-        //get the orientation from the rift
-        OVR::Matrix4f m = getRiftOri();
+        OVR::Matrix4f m = getRiftOri(); //get the orientation from the rift
         D3DXMATRIX camOri( m.M[0][0], m.M[0][1], m.M[0][2], m.M[0][3],
                             m.M[1][0], m.M[1][1], m.M[1][2], m.M[1][3],
                             m.M[2][0], m.M[2][1], m.M[2][2], m.M[2][3],
@@ -232,7 +309,7 @@ void renderFrame(void)
         D3DXMatrixRotationZ(&camOriFix, D3DXToRadian(180.0f));
 
         d3dDevice->SetTransform(D3DTS_VIEW, &(camPos * camOri * camOriFix));    // set the view transform to matView
-
+        
         // set the projection transform
         D3DXMATRIX matProjection;    // the projection transform matrix
         D3DXMatrixPerspectiveFovLH(&matProjection,
@@ -241,10 +318,26 @@ void renderFrame(void)
                                    1.0f,    // the near view-plane
                                    100.0f);    // the far view-plane
         d3dDevice->SetTransform(D3DTS_PROJECTION, &matProjection);     // set the projection
-        
-        // build MULTIPLE matrices to translate the model and one to rotate
+
+        //communicate with shader
+        D3DXMATRIXA16 matWorld, matView, matProj;
+        d3dDevice->GetTransform(D3DTS_WORLD, &matWorld);
+        d3dDevice->GetTransform(D3DTS_VIEW, &matView);
+        d3dDevice->GetTransform(D3DTS_PROJECTION, &matProj);
+
+        D3DXMATRIXA16 matWorldViewProj = matWorld * matView * matProj;
+        constantTable->SetMatrix(d3dDevice,
+                                 "WorldViewProj",
+                                 &matWorldViewProj);
+
+        //add the shaders
+        d3dDevice->SetVertexDeclaration(vertexDecl);
+        d3dDevice->SetVertexShader(vertexShader);
+        d3dDevice->SetPixelShader(pixelShader);
+                
+        // build a matrix to rotate the box
         D3DXMATRIX matRotateY;    // a matrix to store the rotation for the box
-        D3DXMatrixRotationY(&matRotateY, rotation);    // the front side
+        D3DXMatrixRotationY(&matRotateY, rotation);    //rotate the Y-Axis (Yaw of the box)
         
         // select the vertex and index buffers to use
         d3dDevice->SetStreamSource(0, vBuffer, 0, sizeof(CUSTOMVERTEX));
@@ -262,10 +355,46 @@ void renderFrame(void)
 // this is the function that cleans up Direct3D and COM
 void cleanD3D(void)
 {
-    iBuffer->Release();     // close and release the index buffer
-    vBuffer->Release();     // close and release the vertex buffer
-    d3dDevice->Release();   // close and release the 3D device
-    d3d->Release();         // close and release Direct3D
+    if(constantTable)
+    {
+        constantTable->Release();
+        constantTable = NULL;
+    }
+    if(pixelShader)
+    {
+        pixelShader->Release();
+        pixelShader = NULL;
+    }
+    if(vertexShader)
+    {
+        vertexShader->Release();
+        vertexShader = NULL;
+    }
+    if(vertexDecl)
+    {
+        vertexDecl->Release();
+        vertexDecl = NULL;
+    }
+    if(iBuffer)
+    {
+        iBuffer->Release();
+        iBuffer = NULL;
+    }
+    if(vBuffer)
+    {
+        vBuffer->Release();
+        vBuffer = NULL;
+    }
+    if(d3dDevice)
+    {
+        d3dDevice->Release();
+        d3dDevice = NULL;
+    }
+    if(d3d)
+    {
+        d3d->Release();
+        d3d = NULL;
+    }
 }
 
 // the entry point for any Windows program
@@ -274,6 +403,10 @@ int WINAPI WinMain(HINSTANCE hInstance,
                    LPSTR lpCmdLine,
                    int nCmdShow)
 {
+    //Create the logfile
+    logFile.open("logfile.txt", std::fstream::out);
+    logFile << "Logfile initialized" << std::endl;
+
     // the handle for the window, filled by a function
     HWND hWnd;
     // this struct holds information for the window class
@@ -342,6 +475,9 @@ int WINAPI WinMain(HINSTANCE hInstance,
     // clean up DirectX, COM and Rift
     cleanD3D();
     cleanRift();
+
+    //close the logfile
+    logFile.close();
 
     // return this part of the WM_QUIT message to Windows
     return msg.wParam;
